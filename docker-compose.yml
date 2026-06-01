@@ -1,10 +1,9 @@
 # ============================================
 # ML Lifecycle Explorer - Docker Compose
-# For local development and testing
+# Local stack: frontend (nginx) + Redis cache
 # ============================================
 
 services:
-  # Frontend Application
   ml-explorer:
     build:
       context: .
@@ -20,6 +19,9 @@ services:
       - /var/run
     security_opt:
       - no-new-privileges:true
+    depends_on:
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/"]
       interval: 30s
@@ -27,11 +29,35 @@ services:
       retries: 3
     environment:
       - NODE_ENV=production
+      - REDIS_URL=redis://redis:6379
+    networks:
+      - ml-net
     labels:
       - "app=ml-lifecycle-explorer"
       - "version=1.0.0"
 
-  # Development mode (optional)
+  redis:
+    image: redis:7.4-alpine
+    command: >
+      redis-server
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --appendonly yes
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - ml-net
+
   ml-explorer-dev:
     build:
       context: .
@@ -47,3 +73,14 @@ services:
       - dev
     environment:
       - NODE_ENV=development
+      - REDIS_URL=redis://redis:6379
+    networks:
+      - ml-net
+
+networks:
+  ml-net:
+    driver: bridge
+
+volumes:
+  redis-data:
+    driver: local
